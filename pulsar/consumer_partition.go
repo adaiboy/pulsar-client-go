@@ -211,7 +211,23 @@ func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) 
 func (pc *partitionConsumer) AckID(msgID *messageID) {
 	if msgID != nil && msgID.ack() {
 		req := &ackRequest{
-			msgID: msgID,
+			msgID:      msgID,
+			cumulative: false,
+		}
+		pc.eventsCh <- req
+	}
+}
+
+func (pc *partitionConsumer) AckIDCumulative(msgID *messageID) {
+	if msgID == nil {
+		pc.log.Error("msgID is nil when AckIDCumulative")
+		return
+	}
+
+	if msgID.ack() {
+		req := &ackRequest{
+			msgID:      msgID,
+			cumulative: true,
 		}
 		pc.eventsCh <- req
 	}
@@ -340,10 +356,14 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 		EntryId:  proto.Uint64(uint64(msgID.entryID)),
 	}
 
+	ackType := pb.CommandAck_Individual.Enum()
+	if req.cumulative {
+		ackType = pb.CommandAck_Cumulative.Enum()
+	}
 	cmdAck := &pb.CommandAck{
 		ConsumerId: proto.Uint64(pc.consumerID),
 		MessageId:  messageIDs,
-		AckType:    pb.CommandAck_Individual.Enum(),
+		AckType:    ackType,
 	}
 
 	pc.client.rpcClient.RequestOnCnxNoWait(pc.conn, pb.BaseCommand_ACK, cmdAck)
@@ -563,7 +583,8 @@ func (pc *partitionConsumer) dispatcher() {
 }
 
 type ackRequest struct {
-	msgID *messageID
+	msgID      *messageID
+	cumulative bool
 }
 
 type unsubscribeRequest struct {

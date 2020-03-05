@@ -1,5 +1,6 @@
 # IDE generated files
 .idea/
+.vscode/
 
 # Mac swap file
 *.DS_Store
