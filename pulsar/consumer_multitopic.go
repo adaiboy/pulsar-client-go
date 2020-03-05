@@ -131,6 +131,16 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) {
 	mid.Ack()
 }
 
+func (c *multiTopicConsumer) AckCumulative(msg Message) {
+	// TODO(adaiboy): to be implement
+	panic("AckCumulative in multiTopicConsumer is not implemented")
+}
+
+func (c *multiTopicConsumer) AckIDCumulative(msgID MessageID) {
+	// TODO(adaiboy): to be implement
+	panic("AckIDCumulative in multiTopicConsumer is not implemented")
+}
+
 func (c *multiTopicConsumer) Nack(msg Message) {
 	c.NackID(msg.ID())
 }

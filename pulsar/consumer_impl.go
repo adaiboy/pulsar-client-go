@@ -37,6 +37,7 @@ const defaultNackRedeliveryDelay = 1 * time.Minute
 
 type acker interface {
 	AckID(id *messageID)
+	AckIDCumulative(id *messageID)
 	NackID(id *messageID)
 }
 
@@ -276,6 +277,28 @@ func (c *consumer) AckID(msgID MessageID) {
 	}
 
 	c.consumers[mid.partitionIdx].AckID(mid)
+}
+
+func (c *consumer) AckCumulative(msg Message) {
+	c.AckIDCumulative(msg.ID())
+}
+
+func (c *consumer) AckIDCumulative(msgID MessageID) {
+	if c.options.Type != Exclusive && c.options.Type != Failover {
+		c.log.Error("Cumulateive Ack only support Exclusive or Failover")
+		return
+	}
+	mid, ok := c.messageID(msgID)
+	if !ok {
+		return
+	}
+
+	if mid.consumer != nil {
+		mid.AckCumulative()
+		return
+	}
+
+	c.consumers[mid.partitionIdx].AckIDCumulative(mid)
 }
 
 func (c *consumer) Nack(msg Message) {

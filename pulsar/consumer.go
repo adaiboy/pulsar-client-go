@@ -161,6 +161,14 @@ type Consumer interface {
 	// AckID the consumption of a single message, identified by its MessageID
 	AckID(MessageID)
 
+	// AckCumulative the consumption of a single message
+	// if the subscription do not support cumulative, will log error
+	AckCumulative(Message)
+
+	//  AckIDCumulative the consumption of a single message, identified by its MessageID
+	// if the subscription do not support cumulative, will log error
+	AckIDCumulative(MessageID)
+
 	// Acknowledge the failure to process a single message.
 	//
 	// When a message is "negatively acked" it will be marked for redelivery after

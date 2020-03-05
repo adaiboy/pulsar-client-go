@@ -47,6 +47,15 @@ func (id *messageID) Ack() {
 	}
 }
 
+func (id *messageID) AckCumulative() {
+	if id.consumer == nil {
+		return
+	}
+	if id.ack() {
+		id.consumer.AckIDCumulative(id)
+	}
+}
+
 func (id *messageID) Nack() {
 	if id.consumer == nil {
 		return

@@ -175,6 +175,25 @@ func (c *regexConsumer) AckID(msgID MessageID) {
 	mid.Ack()
 }
 
+func (c *regexConsumer) AckCumulative(msg Message) {
+	c.AckIDCumulative(msg.ID())
+}
+
+func (c *regexConsumer) AckIDCumulative(msgID MessageID) {
+	mid, ok := msgID.(*messageID)
+	if !ok {
+		c.log.Warnf("invalid message id type")
+		return
+	}
+
+	if mid.consumer == nil {
+		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
+		return
+	}
+
+	mid.AckCumulative()
+}
+
 func (c *regexConsumer) Nack(msg Message) {
 	c.NackID(msg.ID())
 }
