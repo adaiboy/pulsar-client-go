@@ -57,6 +57,9 @@ type partitionProducer struct {
 	// Channel where app is posting messages to be published
 	eventsChan chan interface{}
 
+	// Channel for connection closed trigger, as eventsChan may block by send request
+	connCloseCh chan interface{}
+
 	publishSemaphore internal.Semaphore
 	pendingQueue     internal.BlockingQueue
 	lastSequenceID   int64
@@ -90,6 +93,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
 		eventsChan:       make(chan interface{}, 10),
+		connCloseCh:      make(chan interface{}),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		publishSemaphore: make(internal.Semaphore, maxPendingMessages),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
@@ -163,12 +167,15 @@ func (p *partitionProducer) grabCnx() error {
 	p.cnx.RegisterListener(p.producerID, p)
 	p.log.WithField("cnx", res.Cnx.ID()).Debug("Connected producer")
 
+	// TODO(adaiboy): 可能也会在这个地方堵住，因为WriteData会写不到channel
+	// 当然，如果换了一个新的conn，那么就有新的channel，能写，但原producer的sengAsync就卡住了
 	if p.pendingQueue.Size() > 0 {
 		p.log.Infof("Resending %d pending batches", p.pendingQueue.Size())
 		for it := p.pendingQueue.Iterator(); it.HasNext(); {
 			p.cnx.WriteData(it.Next().(*pendingItem).batchData)
 		}
 	}
+	p.log.WithField("cnx", res.Cnx.ID()).Info("producer grab fresh cnx")
 	return nil
 }
 
@@ -177,10 +184,11 @@ type connectionClosed struct{}
 func (p *partitionProducer) ConnectionClosed() {
 	// Trigger reconnection in the produce goroutine
 	p.log.WithField("cnx", p.cnx.ID()).Warn("Connection was closed")
-	p.eventsChan <- &connectionClosed{}
+	p.connCloseCh <- &connectionClosed{}
 }
 
 func (p *partitionProducer) reconnectToBroker() {
+	p.log.Info("reconnect to broker..")
 	backoff := internal.Backoff{}
 	for {
 		if p.state != producerReady {
@@ -208,14 +216,15 @@ func (p *partitionProducer) runEventsLoop() {
 			switch v := i.(type) {
 			case *sendRequest:
 				p.internalSend(v)
-			case *connectionClosed:
-				p.reconnectToBroker()
 			case *flushRequest:
 				p.internalFlush(v)
 			case *closeProducer:
 				p.internalClose(v)
 				return
 			}
+
+		case <-p.connCloseCh:
+			p.reconnectToBroker()
 
 		case <-p.batchFlushTicker.C:
 			p.internalFlushCurrentBatch()
