@@ -306,13 +306,16 @@ func (c *connection) waitUntilReady() error {
 
 func (c *connection) run() {
 	// All reads come from the reader goroutine
+	log.Info("start run connection")
 	go c.reader.readFromConnection()
 	go c.runPingCheck()
 
 	for {
 		select {
 		case <-c.closeCh:
+			log.Info("x - begin connection Close in run loop")
 			c.Close()
+			log.Info("x - finish connection Close in run loop")
 			return
 
 		case req := <-c.incomingRequestsCh:

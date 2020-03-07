@@ -72,9 +72,12 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	newCnx, wasCached := p.pool.LoadOrStore(logicalAddr.Host, newConnection)
 	cnx := newCnx.(*connection)
 	if !wasCached {
+		log.Infof("fresh connection was create to %s", physicalAddr.String())
 		cnx.start()
 	} else {
+		log.Infof("cached connection was get to %s", physicalAddr.String())
 		newConnection.Close()
+		// TODO(adaiboy): 这个地方如果是复用之前已经关闭的连接的话，也应该判断新的连接要不要再次start
 	}
 
 	if err := cnx.waitUntilReady(); err != nil {
