@@ -107,6 +107,7 @@ type partitionConsumer struct {
 
 	eventsCh     chan interface{}
 	connectedCh  chan struct{}
+	connCloseCh  chan struct{}
 	closeCh      chan struct{}
 	clearQueueCh chan func(id *messageID)
 
@@ -132,6 +133,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		queueCh:        make(chan []*message, options.receiverQueueSize),
 		startMessageID: options.startMessageID,
 		connectedCh:    make(chan struct{}),
+		connCloseCh:    make(chan struct{}, 1),
 		messageCh:      messageCh,
 		closeCh:        make(chan struct{}),
 		clearQueueCh:   make(chan func(id *messageID)),
@@ -471,7 +473,7 @@ func (pc *partitionConsumer) messageShouldBeDiscarded(msgID *messageID) bool {
 
 func (pc *partitionConsumer) ConnectionClosed() {
 	// Trigger reconnection in the consumer goroutine
-	pc.eventsCh <- &connectionClosed{}
+	pc.connCloseCh <- struct{}{}
 }
 
 // Flow command gives additional permits to send messages to the consumer.
@@ -653,12 +655,13 @@ func (pc *partitionConsumer) runEventsLoop() {
 				pc.internalSeek(v)
 			case *seekByTimeRequest:
 				pc.internalSeekByTime(v)
-			case *connectionClosed:
-				pc.reconnectToBroker()
 			case *closeRequest:
 				pc.internalClose(v)
 				return
 			}
+
+		case <-pc.connCloseCh:
+			pc.reconnectToBroker()
 		}
 	}
 }

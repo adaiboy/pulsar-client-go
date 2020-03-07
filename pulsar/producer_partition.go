@@ -93,7 +93,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
 		eventsChan:       make(chan interface{}, 10),
-		connCloseCh:      make(chan interface{}),
+		connCloseCh:      make(chan interface{}, 1),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		publishSemaphore: make(internal.Semaphore, maxPendingMessages),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
@@ -167,15 +167,12 @@ func (p *partitionProducer) grabCnx() error {
 	p.cnx.RegisterListener(p.producerID, p)
 	p.log.WithField("cnx", res.Cnx.ID()).Debug("Connected producer")
 
-	// TODO(adaiboy): 可能也会在这个地方堵住，因为WriteData会写不到channel
-	// 当然，如果换了一个新的conn，那么就有新的channel，能写，但原producer的sengAsync就卡住了
 	if p.pendingQueue.Size() > 0 {
 		p.log.Infof("Resending %d pending batches", p.pendingQueue.Size())
 		for it := p.pendingQueue.Iterator(); it.HasNext(); {
 			p.cnx.WriteData(it.Next().(*pendingItem).batchData)
 		}
 	}
-	p.log.WithField("cnx", res.Cnx.ID()).Info("producer grab fresh cnx")
 	return nil
 }
 
@@ -188,7 +185,6 @@ func (p *partitionProducer) ConnectionClosed() {
 }
 
 func (p *partitionProducer) reconnectToBroker() {
-	p.log.Info("reconnect to broker..")
 	backoff := internal.Backoff{}
 	for {
 		if p.state != producerReady {
@@ -252,7 +248,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	sendAsBatch := !p.options.DisableBatching &&
 		msg.ReplicationClusters == nil &&
-		deliverAt.UnixNano() == 0
+		deliverAt.UnixNano() <= 0
 
 	smm := &pb.SingleMessageMetadata{
 		PayloadSize: proto.Int(len(msg.Payload)),
